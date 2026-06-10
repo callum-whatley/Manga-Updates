@@ -64,6 +64,7 @@ def _search_yomimanga(title: str, search_url: str) -> list[dict]:
         if not raw or not raw.strip():
             current_app.logger.warning('[search] YomiManga returned empty response for %s', search_url)
             return []
+        current_app.logger.warning('[search] YomiManga raw response (first 300 chars): %s', raw[:300])
         results = json.loads(raw)
         if not isinstance(results, list):
             raise ValueError('expected list response')

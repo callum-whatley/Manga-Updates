@@ -73,7 +73,7 @@ def fetch_json_in_browser(url: str) -> str:
                     else route.continue_()
                 ))
                 page.goto(origin, wait_until='load', timeout=TIMEOUT)
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(3000)
                 result = page.evaluate(
                     """async (apiUrl) => {
                         try {
