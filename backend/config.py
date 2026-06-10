@@ -14,3 +14,15 @@ class Config:
     GITHUB_CLIENT_SECRET = os.environ['GITHUB_CLIENT_SECRET']
 
     FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+    BACKEND_URL = os.environ.get('BACKEND_URL', '').rstrip('/')
+
+    SESSION_COOKIE_SAMESITE = 'None'
+    SESSION_COOKIE_SECURE = True
+
+    NATIVE_CALLBACK_SCHEME = os.environ.get('NATIVE_CALLBACK_SCHEME', 'mangaupdates')
+    CAPACITOR_ORIGINS = os.environ.get('CAPACITOR_ORIGINS', 'capacitor://localhost,http://localhost')
+
+    @property
+    def ALLOWED_ORIGINS(self):
+        extra = [o.strip() for o in self.CAPACITOR_ORIGINS.split(',') if o.strip()]
+        return [self.FRONTEND_URL] + extra

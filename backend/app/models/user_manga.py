@@ -18,9 +18,10 @@ class UserManga(db.Model):
     manga = db.relationship('Manga', back_populates='user_entries')
 
     def to_dict(self):
+        manga_dict = self.manga.to_dict()
         return {
-            **self.manga.to_dict(),
+            **manga_dict,
             'currentChapter': self.current_chapter,
             'currentChapterUrl': self.current_chapter_url,
-            'hasUpdate': self.manga.latest_chapter > self.current_chapter,
+            'hasUpdate': manga_dict['latestChapter'] > self.current_chapter,
         }
