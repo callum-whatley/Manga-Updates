@@ -119,7 +119,7 @@ def google_login():
         return jsonify({'error': 'Valid invite code required'}), 403
     state = _secrets.token_urlsafe(24)
     redirect_uri = _base_url() + '/auth/google/callback'
-    _save(state, {'invite_code': invite_code, 'native': request.args.get('native') == '1', 'redirect_uri': redirect_uri})
+    _save(state, {'invite_code': invite_code, 'flow': 'signup', 'native': request.args.get('native') == '1', 'redirect_uri': redirect_uri})
     return oauth.google.authorize_redirect(redirect_uri, state=state)
 
 
@@ -133,6 +133,17 @@ def google_callback():
 
     token = oauth.google.authorize_access_token()
     userinfo = token.get('userinfo') or oauth.google.userinfo()
+
+    if data.get('flow') == 'login':
+        user = User.query.filter_by(oauth_provider='google', oauth_sub=userinfo['sub']).first()
+        if not user:
+            frontend = current_app.config['FRONTEND_URL']
+            return redirect(f'{frontend}/login?error=no_account')
+        user.display_name = userinfo.get('name', user.display_name)
+        user.avatar_url = userinfo.get('picture', user.avatar_url)
+        db.session.commit()
+        return redirect(_redirect_with_token(user, native=data.get('native', False)))
+
     invite = _validate_invite(data.get('invite_code'))
     if not invite:
         return jsonify({'error': 'Invite expired or invalid'}), 403
@@ -158,7 +169,7 @@ def github_login():
         return jsonify({'error': 'Valid invite code required'}), 403
     state = _secrets.token_urlsafe(24)
     redirect_uri = _base_url() + '/auth/github/callback'
-    _save(state, {'invite_code': invite_code, 'native': request.args.get('native') == '1', 'redirect_uri': redirect_uri})
+    _save(state, {'invite_code': invite_code, 'flow': 'signup', 'native': request.args.get('native') == '1', 'redirect_uri': redirect_uri})
     return oauth.github.authorize_redirect(redirect_uri, state=state)
 
 
@@ -173,6 +184,17 @@ def github_callback():
     token = oauth.github.authorize_access_token()
     resp = oauth.github.get('user', token=token)
     profile = resp.json()
+
+    if data.get('flow') == 'login':
+        user = User.query.filter_by(oauth_provider='github', oauth_sub=str(profile['id'])).first()
+        if not user:
+            frontend = current_app.config['FRONTEND_URL']
+            return redirect(f'{frontend}/login?error=no_account')
+        user.display_name = profile.get('name') or profile.get('login', user.display_name)
+        user.avatar_url = profile.get('avatar_url', user.avatar_url)
+        db.session.commit()
+        return redirect(_redirect_with_token(user, native=data.get('native', False)))
+
     email_resp = oauth.github.get('user/emails', token=token)
     emails = email_resp.json()
     primary_email = next((e['email'] for e in emails if e.get('primary')), profile.get('email', ''))
@@ -197,58 +219,17 @@ def github_callback():
 @bp.route('/google/login')
 def google_login_returning():
     state = _secrets.token_urlsafe(24)
-    redirect_uri = _base_url() + '/auth/google/login/callback'
-    _save(state, {'native': request.args.get('native') == '1', 'redirect_uri': redirect_uri})
+    redirect_uri = _base_url() + '/auth/google/callback'
+    _save(state, {'flow': 'login', 'native': request.args.get('native') == '1', 'redirect_uri': redirect_uri})
     return oauth.google.authorize_redirect(redirect_uri, state=state)
-
-
-@bp.route('/google/login/callback')
-def google_login_returning_callback():
-    state = request.args.get('state', '')
-    data = _pop(state)
-    if data is None:
-        return jsonify({'error': 'Invalid or expired OAuth state'}), 400
-    _restore_session('google', state, data.get('redirect_uri', ''))
-
-    token = oauth.google.authorize_access_token()
-    userinfo = token.get('userinfo') or oauth.google.userinfo()
-    user = User.query.filter_by(oauth_provider='google', oauth_sub=userinfo['sub']).first()
-    if not user:
-        frontend = current_app.config['FRONTEND_URL']
-        return redirect(f'{frontend}/login?error=no_account')
-    user.display_name = userinfo.get('name', user.display_name)
-    user.avatar_url = userinfo.get('picture', user.avatar_url)
-    db.session.commit()
-    return redirect(_redirect_with_token(user, native=data.get('native', False)))
 
 
 @bp.route('/github/login')
 def github_login_returning():
     state = _secrets.token_urlsafe(24)
-    redirect_uri = _base_url() + '/auth/github/login/callback'
-    _save(state, {'native': request.args.get('native') == '1', 'redirect_uri': redirect_uri})
+    redirect_uri = _base_url() + '/auth/github/callback'
+    _save(state, {'flow': 'login', 'native': request.args.get('native') == '1', 'redirect_uri': redirect_uri})
     return oauth.github.authorize_redirect(redirect_uri, state=state)
-
-
-@bp.route('/github/login/callback')
-def github_login_returning_callback():
-    state = request.args.get('state', '')
-    data = _pop(state)
-    if data is None:
-        return jsonify({'error': 'Invalid or expired OAuth state'}), 400
-    _restore_session('github', state, data.get('redirect_uri', ''))
-
-    token = oauth.github.authorize_access_token()
-    resp = oauth.github.get('user', token=token)
-    profile = resp.json()
-    user = User.query.filter_by(oauth_provider='github', oauth_sub=str(profile['id'])).first()
-    if not user:
-        frontend = current_app.config['FRONTEND_URL']
-        return redirect(f'{frontend}/login?error=no_account')
-    user.display_name = profile.get('name') or profile.get('login', user.display_name)
-    user.avatar_url = profile.get('avatar_url', user.avatar_url)
-    db.session.commit()
-    return redirect(_redirect_with_token(user, native=data.get('native', False)))
 
 
 # ── Me ─────────────────────────────────────────────────────────────────────────

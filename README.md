@@ -45,16 +45,14 @@ On your router, forward **port 80** to your server's local IP. Port 443 is not n
 
 ### 4. OAuth credentials
 
-In **Google Cloud Console** ([console.cloud.google.com](https://console.cloud.google.com)), add these as authorised redirect URIs:
+In **Google Cloud Console** ([console.cloud.google.com](https://console.cloud.google.com)), add this as an authorised redirect URI:
 ```
 https://mangatrack.uk/auth/google/callback
-https://mangatrack.uk/auth/google/login/callback
 ```
 
 In **GitHub Developer Settings** ([github.com/settings/developers](https://github.com/settings/developers)), set the callback URL to:
 ```
 https://mangatrack.uk/auth/github/callback
-https://mangatrack.uk/auth/github/login/callback
 ```
 
 ### 5. Server setup
