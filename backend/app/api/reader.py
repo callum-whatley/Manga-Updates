@@ -1,5 +1,6 @@
+from datetime import timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token
 from urllib.parse import urljoin
 import json
 import re
@@ -190,6 +191,17 @@ def get_images():
     return jsonify({'images': images})
 
 
+@bp.get('/image-token')
+@jwt_required()
+def image_token():
+    token = create_access_token(
+        identity=get_jwt_identity(),
+        expires_delta=timedelta(minutes=5),
+        additional_claims={'t': 'img'},
+    )
+    return jsonify({'token': token})
+
+
 _SAFE_IMAGE_TYPES = frozenset({
     'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif',
 })
@@ -198,17 +210,24 @@ _SAFE_IMAGE_TYPES = frozenset({
 @bp.get('/proxy-image')
 def proxy_image():
     from flask_jwt_extended import decode_token
-    token = request.args.get('token', '').strip()
-    if not token:
-        auth_header = request.headers.get('Authorization', '')
-        if auth_header.startswith('Bearer '):
-            token = auth_header[7:]
-    if not token:
+    url_token = request.args.get('token', '').strip()
+    auth_header = request.headers.get('Authorization', '')
+    header_token = auth_header[7:] if auth_header.startswith('Bearer ') else ''
+
+    if url_token:
+        try:
+            claims = decode_token(url_token)
+        except Exception:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+        if claims.get('t') != 'img':
+            return jsonify({'error': 'Invalid token type'}), 401
+    elif header_token:
+        try:
+            decode_token(header_token)
+        except Exception:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+    else:
         return jsonify({'error': 'Authentication required'}), 401
-    try:
-        decode_token(token)
-    except Exception:
-        return jsonify({'error': 'Invalid or expired token'}), 401
 
     url = validate_external_url(request.args.get('url', '').strip())
     if not url:
