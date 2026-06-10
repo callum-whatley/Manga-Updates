@@ -40,12 +40,12 @@ const route = useRoute();
 const error = computed(() => route.query.error === 'no_account');
 
 async function openOAuth(path: string) {
-	const url = `${window.location.origin}${path}`;
 	try {
 		const { Capacitor } = await import('@capacitor/core');
 		if (Capacitor.isNativePlatform()) {
 			const { Browser } = await import('@capacitor/browser');
-			await Browser.open({ url: url + '?native=1' });
+			const base = import.meta.env.VITE_API_URL ?? 'https://mangatrack.uk';
+			await Browser.open({ url: `${base}${path}?native=1` });
 			return;
 		}
 	} catch {
