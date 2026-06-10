@@ -11,6 +11,7 @@ class MangaSourceEntry(db.Model):
     site_id = db.Column(db.Integer, db.ForeignKey('scraper_sites.id'), nullable=False)
     latest_chapter = db.Column(db.Float, default=0.0)
     latest_chapter_url = db.Column(db.String(500))
+    cover_url = db.Column(db.String(500), nullable=True)
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (db.UniqueConstraint('manga_id', 'site_id'),)

@@ -3,9 +3,10 @@ from datetime import datetime, timezone
 
 
 # Preferred source order for cover art and display. Scanlation sites that host
-# the chapters we read (and whose covers match those releases) rank above the
-# aggregators (Mangafox, MangaDex) whose cover art is often a different edition.
-SOURCE_PRIORITY = ['asurascans', 'vortexscans', 'yomi manga', 'mangafox', 'mangadex']
+# the chapters we read (and whose covers match those releases) rank first. Among
+# the aggregators, MangaDex outranks Mangafox because MangaDex serves stable
+# cover URLs while Mangafox's are hotlink-protected and expire within ~24h.
+SOURCE_PRIORITY = ['asurascans', 'vortexscans', 'yomi manga', 'mangadex', 'mangafox']
 
 
 def source_rank(site_name: str) -> int:

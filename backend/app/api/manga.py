@@ -53,11 +53,9 @@ def add_manga():
 
     existing_site_ids = {e.site_id for e in manga.source_entries}
 
-    # Search each active site for this specific title.
-    # Collect covers per source so we can pick one by priority afterwards rather
-    # than letting whichever source happens to be searched first (or MangaDex) win.
+    # Search each active site for this specific title. Each source stores its own
+    # cover; the displayed cover is chosen by priority in Manga.preferred_cover().
     from ..scrapers.search import search_site
-    scraped_covers = {}  # site_name.lower() -> cover_url
     scraper_sites = ScraperSite.query.filter(
         ScraperSite.is_active == True,
         ScraperSite.name != 'MangaDex',
@@ -67,16 +65,12 @@ def add_manga():
         matches = match_scraped_to_library(scraped, [manga])
         for m in matches['auto']:
             _upsert_source_entry(manga, site, m['scraped'])
-            if m['scraped'].get('cover_url'):
-                scraped_covers[site.name.lower()] = m['scraped']['cover_url']
 
     # MangaDex last — skip if already linked
     mdx_site = ScraperSite.query.filter_by(name='MangaDex').first()
     if not mdx_site or mdx_site.id not in existing_site_ids:
         info = mangadex_fetch_one(title)
         if info:
-            if info.get('cover_url'):
-                scraped_covers['mangadex'] = info['cover_url']
             if not manga.mangadex_id:
                 manga.mangadex_id = info.get('mangadex_id')
             if info.get('chapter') is not None:
@@ -95,15 +89,6 @@ def add_manga():
                     'chapter_url': info['chapter_url'],
                     'cover_url': info.get('cover_url'),
                 })
-
-    # Pick cover art by source priority — scanlation covers over aggregator covers.
-    # Only overrides when this search actually found a cover, so an existing cover
-    # is never wiped by a source that returned none.
-    from ..models.scraper_site import SOURCE_PRIORITY
-    for _src in SOURCE_PRIORITY:
-        if scraped_covers.get(_src):
-            manga.cover_url = scraped_covers[_src]
-            break
 
     existing = UserManga.query.filter_by(user_id=user.id, manga_id=manga.id).first()
     if existing:
@@ -148,9 +133,20 @@ def remove_source_entry(manga_id: int, site_id: int):
         return jsonify({'error': 'Cannot remove a shared source entry while other users track this manga'}), 409
 
     entry = MangaSourceEntry.query.filter_by(manga_id=manga_id, site_id=site_id).first_or_404()
+    manga = entry.manga
     db.session.delete(entry)
+    db.session.flush()  # so manga.source_entries reflects the removal
+
+    # Re-sync the denormalised cover to whatever the remaining sources offer, so
+    # removing the source a cover came from falls back to the next available one.
+    from ..models.scraper_site import source_rank
+    remaining = [e for e in manga.source_entries if e.cover_url]
+    manga.cover_url = (
+        min(remaining, key=lambda e: source_rank(e.site.name)).cover_url
+        if remaining else None
+    )
     db.session.commit()
-    return '', 204
+    return jsonify(manga.to_dict())
 
 
 # ── Update current chapter (called when user clicks a chapter link) ────────────
@@ -212,6 +208,7 @@ _COVER_REFERER_RULES = [
     ('asuracomic.net', 'https://asuracomic.net/'),
     ('fanfox.net', 'https://fanfox.net/'),
     ('mangafox.me', 'https://fanfox.net/'),
+    ('mfcdn.net', 'https://fanfox.net/'),
 ]
 
 
@@ -252,10 +249,13 @@ def proxy_cover():
 
 def _upsert_source_entry(manga, site, scraped: dict):
     from ..models import MangaSourceEntry
+    cover = scraped.get('cover_url')
     entry = MangaSourceEntry.query.filter_by(manga_id=manga.id, site_id=site.id).first()
     if entry:
         entry.latest_chapter = scraped['chapter']
         entry.latest_chapter_url = scraped['chapter_url']
+        if cover:
+            entry.cover_url = cover
         entry.updated_at = datetime.now(timezone.utc)
     else:
         db.session.add(MangaSourceEntry(
@@ -263,9 +263,13 @@ def _upsert_source_entry(manga, site, scraped: dict):
             site_id=site.id,
             latest_chapter=scraped['chapter'],
             latest_chapter_url=scraped['chapter_url'],
+            cover_url=cover,
         ))
-    if not manga.cover_url and scraped.get('cover_url'):
-        manga.cover_url = scraped['cover_url']
+    # Keep the manga-level cover as a denormalised fallback (used when no source
+    # carries a cover). Per-source covers drive the displayed cover via
+    # Manga.preferred_cover().
+    if not manga.cover_url and cover:
+        manga.cover_url = cover
 
 
 def _refresh_sources_for_manga(manga):

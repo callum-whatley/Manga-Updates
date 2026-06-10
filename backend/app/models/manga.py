@@ -25,6 +25,20 @@ class Manga(db.Model):
             return max((e.latest_chapter for e in self.source_entries), default=0.0)
         return self.latest_chapter
 
+    def preferred_cover(self) -> str | None:
+        """Cover from the highest-priority source that currently has one.
+
+        Computed live from the source entries so that removing the source a cover
+        came from automatically falls back to the next available source (or to no
+        cover if none remain). Falls back to the denormalised manga-level cover
+        only when no source carries one.
+        """
+        with_cover = [e for e in self.source_entries if e.cover_url]
+        if with_cover:
+            best = min(with_cover, key=lambda e: source_rank(e.site.name))
+            return best.cover_url
+        return self.cover_url
+
     def to_dict(self):
         sources = sorted(
             [e.to_dict() for e in self.source_entries],
@@ -33,7 +47,7 @@ class Manga(db.Model):
         return {
             'id': self.id,
             'title': self.title,
-            'coverUrl': self.cover_url,
+            'coverUrl': self.preferred_cover(),
             'latestChapter': self.best_chapter(),
             'sources': sources,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None,

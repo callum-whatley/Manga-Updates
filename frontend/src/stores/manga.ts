@@ -66,10 +66,12 @@ export const useMangaStore = defineStore('manga', () => {
 
   async function removeSource(mangaId: number, siteId: number) {
     try {
-      await api.delete(`/manga/${mangaId}/sources/${siteId}`);
-      const item = list.value.find((m) => m.id === mangaId);
-      if (item) {
-        item.sources = item.sources.filter((s) => s.siteId !== siteId);
+      const { data } = await api.delete<MangaEntry>(`/manga/${mangaId}/sources/${siteId}`);
+      const idx = list.value.findIndex((m) => m.id === mangaId);
+      if (idx !== -1) {
+        // Replace with the server's updated entry so coverUrl falls back to the
+        // next available source.
+        list.value[idx] = data;
       }
     } catch (e: any) {
       error.value = e.response?.data?.error ?? 'Failed to remove source';
