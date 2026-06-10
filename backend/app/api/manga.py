@@ -222,6 +222,31 @@ _COVER_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
 }
 
+_SAFE_COVER_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'}
+
+
+def _sniff_image_type(data: bytes) -> str | None:
+    """Detect a raster image type from its magic bytes.
+
+    Used because some CDNs (e.g. storage.vortexscans.org) serve covers as
+    application/octet-stream. Sniffing the bytes is safer than trusting the
+    Content-Type header or the URL extension — we only ever serve content that is
+    genuinely one of the allowed raster formats.
+    """
+    if len(data) < 12:
+        return None
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'image/png'
+    if data[:3] == b'\xff\xd8\xff':
+        return 'image/jpeg'
+    if data[:6] in (b'GIF87a', b'GIF89a'):
+        return 'image/gif'
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'image/webp'
+    if data[4:8] == b'ftyp' and data[8:12] in (b'avif', b'avis'):
+        return 'image/avif'
+    return None
+
 
 @bp.get('/cover')
 def proxy_cover():
@@ -237,9 +262,12 @@ def proxy_cover():
         if resp.status_code != 200:
             return '', resp.status_code
         ct = resp.headers.get('Content-Type', '').split(';')[0].strip().lower()
-        if ct not in {'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'}:
+        # Trust a declared safe image type; otherwise (e.g. octet-stream) fall back
+        # to sniffing the actual bytes so we still only serve real raster images.
+        serve_ct = ct if ct in _SAFE_COVER_TYPES else _sniff_image_type(resp.content)
+        if serve_ct not in _SAFE_COVER_TYPES:
             return '', 400
-        return Response(resp.content, content_type=ct, headers={
+        return Response(resp.content, content_type=serve_ct, headers={
             'Cache-Control': 'public, max-age=86400',
             'X-Content-Type-Options': 'nosniff',
         })
