@@ -4,98 +4,93 @@ A personal manga tracking app with a Flask backend, Vue 3 frontend, and Android 
 
 ---
 
-## Deploying to Fly.io
+## Deploying (self-hosted)
 
-### 1. Install flyctl
+The app runs on a home server behind Cloudflare. Cloudflare terminates HTTPS and proxies HTTP to port 80 on your machine — your server only needs to serve plain HTTP.
 
-```bash
-curl -L https://fly.io/install.sh | sh
-fly auth login
-```
+### 1. DNS
 
-### 2. Choose app names
+In the Cloudflare dashboard for `mangatrack.uk`:
+1. Add an **A record**: name `@`, value = your home IP address
+2. Enable the **orange cloud** (proxy) on that record
 
-Fly app names are globally unique. Pick names for your backend and frontend (e.g. `manga-backend-callum` and `manga-frontend-callum`), then update both fly.toml files and the frontend's internal URL reference:
+Your home IP is hidden from the public and Cloudflare handles HTTPS automatically.
 
-**`backend/fly.toml`** — set `app`:
-```toml
-app = "your-backend-name"
-```
+### 2. Keep the IP updated (ddclient)
 
-**`frontend/fly.toml`** — set `app` and `BACKEND_INTERNAL_URL`:
-```toml
-app = "your-frontend-name"
-
-[env]
-  BACKEND_INTERNAL_URL = "http://your-backend-name.internal:5001"
-```
-
-### 3. Deploy the backend
+Home IPs change occasionally. Install `ddclient` on the server to auto-update the Cloudflare record:
 
 ```bash
-cd backend
-fly deploy
+sudo apt install ddclient
 ```
 
-Set secrets (Fly encrypts and injects these as environment variables at runtime):
+Create a Cloudflare API token with **Zone:DNS:Edit** permission for `mangatrack.uk` (Cloudflare dashboard → My Profile → API Tokens), then configure `/etc/ddclient.conf`:
+
+```
+protocol=cloudflare
+use=web
+zone=mangatrack.uk
+login=your@cloudflare-email.com
+password=your-cloudflare-api-token
+mangatrack.uk
+```
 
 ```bash
-fly secrets set \
-  SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))") \
-  JWT_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))") \
-  GOOGLE_CLIENT_ID=your_id \
-  GOOGLE_CLIENT_SECRET=your_secret \
-  GITHUB_CLIENT_ID=your_id \
-  GITHUB_CLIENT_SECRET=your_secret \
-  FRONTEND_URL=https://your-frontend-name.fly.dev \
-  BACKEND_URL=https://your-backend-name.fly.dev
+sudo systemctl enable --now ddclient
 ```
 
-### 4. Provision Postgres
+### 3. Port forwarding
+
+On your router, forward **port 80** to your server's local IP. Port 443 is not needed — Cloudflare handles that.
+
+### 4. OAuth credentials
+
+In **Google Cloud Console** ([console.cloud.google.com](https://console.cloud.google.com)), add these as authorised redirect URIs:
+```
+https://mangatrack.uk/auth/google/callback
+https://mangatrack.uk/auth/google/login/callback
+```
+
+In **GitHub Developer Settings** ([github.com/settings/developers](https://github.com/settings/developers)), set the callback URL to:
+```
+https://mangatrack.uk/auth/github/callback
+https://mangatrack.uk/auth/github/login/callback
+```
+
+### 5. Server setup
+
+Clone the repo on the server, then create the environment file:
 
 ```bash
-fly postgres create --name manga-db --region lhr
-fly postgres attach manga-db --app your-backend-name
+cp .env.example .env
 ```
 
-This automatically sets `DATABASE_URL` on the backend. Then run migrations:
+Edit `.env` and fill in all values. The URLs are already set to `mangatrack.uk`.
 
-```bash
-fly ssh console --app your-backend-name -C "flask db upgrade"
-```
-
-### 5. Deploy the frontend
+### 6. Start the stack
 
 ```bash
-cd ../frontend
-fly deploy
+docker compose up -d --build
 ```
 
-### 6. Set OAuth redirect URIs
+This starts three containers:
+- **db** — PostgreSQL (data persisted in a named Docker volume)
+- **backend** — Flask + Gunicorn (runs DB migrations automatically on startup)
+- **frontend** — Caddy serving the built Vue app and proxying `/api` and `/auth` to the backend
 
-In **Google Cloud Console**, add as authorised redirect URIs:
-```
-https://your-backend-name.fly.dev/auth/google/callback
-https://your-backend-name.fly.dev/auth/google/login/callback
-```
-
-In **GitHub Developer Settings**, set the callback URL to:
-```
-https://your-backend-name.fly.dev/auth/github/callback
-https://your-backend-name.fly.dev/auth/github/login/callback
-```
+The app will be available at `https://mangatrack.uk`.
 
 ### 7. Make yourself an admin
 
 ```bash
-fly ssh console --app your-backend-name -C "flask user make-admin your@email.com"
+docker compose exec backend flask user make-admin your@email.com
 ```
 
 ---
 
 ## Building the Android APK
 
-The APK bundles the frontend assets and talks to the deployed backend via the frontend proxy.
+The APK bundles the frontend assets and talks to the deployed backend.
 
 ### 1. Prerequisites
 
@@ -103,12 +98,12 @@ The APK bundles the frontend assets and talks to the deployed backend via the fr
 - Java 17+
 - Node.js + Yarn
 
-### 2. Point the app at your deployment
+### 2. Point the app at the backend
 
 Edit `frontend/.env.capacitor`:
 
 ```
-VITE_API_URL=https://your-frontend-name.fly.dev
+VITE_API_URL=https://mangatrack.uk
 VITE_APP_BASE=./
 ```
 
