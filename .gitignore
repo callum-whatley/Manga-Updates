@@ -1,4 +1,34 @@
-/py-venv/*
-/__pycache__/*
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+py-venv/
 
+# Environment
 .env
+.env.local
+.env.*.local
+
+# Flask
+instance/
+
+# Node
+node_modules/
+dist/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test results
+test-results/
+playwright-report/
