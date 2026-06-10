@@ -4,67 +4,98 @@ A personal manga tracking app with a Flask backend, Vue 3 frontend, and Android 
 
 ---
 
-## Deploying to a VPS
+## Deploying to Fly.io
 
-### 1. Domain & HTTPS
-
-1. Register a domain and add it to Cloudflare.
-2. Create an **A record** pointing your domain (e.g. `manga.yourdomain.com`) at your VPS IP.
-3. Enable the Cloudflare proxy (orange cloud). Cloudflare terminates HTTPS automatically — no Certbot setup needed. Your server only needs to accept HTTP on port 80.
-
-### 2. OAuth credentials
-
-In **Google Cloud Console** ([console.cloud.google.com](https://console.cloud.google.com)), add these as authorised redirect URIs:
-```
-https://manga.yourdomain.com/auth/google/callback
-https://manga.yourdomain.com/auth/google/login/callback
-```
-
-In **GitHub Developer Settings** ([github.com/settings/developers](https://github.com/settings/developers)), set the callback URL to:
-```
-https://manga.yourdomain.com/auth/github/callback
-https://manga.yourdomain.com/auth/github/login/callback
-```
-
-### 3. Server setup
-
-SSH into the VPS, clone the repo, then create the environment file:
+### 1. Install flyctl
 
 ```bash
-cp .env.example .env
+curl -L https://fly.io/install.sh | sh
+fly auth login
 ```
 
-Edit `.env` and fill in all values. Both `FRONTEND_URL` and `BACKEND_URL` should be the same public URL:
+### 2. Choose app names
 
-```
-FRONTEND_URL=https://manga.yourdomain.com
-BACKEND_URL=https://manga.yourdomain.com
+Fly app names are globally unique. Pick names for your backend and frontend (e.g. `manga-backend-callum` and `manga-frontend-callum`), then update both fly.toml files and the frontend's internal URL reference:
+
+**`backend/fly.toml`** — set `app`:
+```toml
+app = "your-backend-name"
 ```
 
-### 4. Start the stack
+**`frontend/fly.toml`** — set `app` and `BACKEND_INTERNAL_URL`:
+```toml
+app = "your-frontend-name"
+
+[env]
+  BACKEND_INTERNAL_URL = "http://your-backend-name.internal:5001"
+```
+
+### 3. Deploy the backend
 
 ```bash
-docker compose up -d --build
+cd backend
+fly deploy
 ```
 
-This starts three containers:
-- **db** — PostgreSQL (data persisted in a named Docker volume)
-- **backend** — Flask + Gunicorn (runs DB migrations automatically on startup)
-- **frontend** — nginx serving the built Vue app and proxying `/api` and `/auth` to the backend
-
-The app will be available at `https://manga.yourdomain.com`.
-
-### 5. Make yourself an admin
+Set secrets (Fly encrypts and injects these as environment variables at runtime):
 
 ```bash
-docker compose exec backend flask user make-admin your@email.com
+fly secrets set \
+  SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))") \
+  JWT_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))") \
+  GOOGLE_CLIENT_ID=your_id \
+  GOOGLE_CLIENT_SECRET=your_secret \
+  GITHUB_CLIENT_ID=your_id \
+  GITHUB_CLIENT_SECRET=your_secret \
+  FRONTEND_URL=https://your-frontend-name.fly.dev \
+  BACKEND_URL=https://your-backend-name.fly.dev
+```
+
+### 4. Provision Postgres
+
+```bash
+fly postgres create --name manga-db --region lhr
+fly postgres attach manga-db --app your-backend-name
+```
+
+This automatically sets `DATABASE_URL` on the backend. Then run migrations:
+
+```bash
+fly ssh console --app your-backend-name -C "flask db upgrade"
+```
+
+### 5. Deploy the frontend
+
+```bash
+cd ../frontend
+fly deploy
+```
+
+### 6. Set OAuth redirect URIs
+
+In **Google Cloud Console**, add as authorised redirect URIs:
+```
+https://your-backend-name.fly.dev/auth/google/callback
+https://your-backend-name.fly.dev/auth/google/login/callback
+```
+
+In **GitHub Developer Settings**, set the callback URL to:
+```
+https://your-backend-name.fly.dev/auth/github/callback
+https://your-backend-name.fly.dev/auth/github/login/callback
+```
+
+### 7. Make yourself an admin
+
+```bash
+fly ssh console --app your-backend-name -C "flask user make-admin your@email.com"
 ```
 
 ---
 
 ## Building the Android APK
 
-The APK bundles the frontend assets and talks directly to the deployed backend.
+The APK bundles the frontend assets and talks to the deployed backend via the frontend proxy.
 
 ### 1. Prerequisites
 
@@ -72,17 +103,17 @@ The APK bundles the frontend assets and talks directly to the deployed backend.
 - Java 17+
 - Node.js + Yarn
 
-### 2. Point the app at your backend
+### 2. Point the app at your deployment
 
 Edit `frontend/.env.capacitor`:
 
 ```
-VITE_API_URL=https://manga.yourdomain.com
+VITE_API_URL=https://your-frontend-name.fly.dev
 VITE_APP_BASE=./
 ```
 
 For local development against a backend running on your machine, use:
-- **Android emulator:** `http://10.0.2.2:5001` (emulator's alias for host localhost)
+- **Android emulator:** `http://10.0.2.2:5001`
 - **Physical device on same network:** `http://<your-machine-ip>:5001`
 
 ### 3. Build and sync
@@ -113,7 +144,6 @@ The signed APK will be in `android/app/release/`.
 cd backend
 source .venv/bin/activate   # or create one: python -m venv .venv
 pip install -r requirements.txt
-cp .env.example .env        # fill in values
 flask db upgrade
 python run.py               # runs on http://localhost:5001
 
