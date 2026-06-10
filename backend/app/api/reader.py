@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request, Response, current_app
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from urllib.parse import urljoin
 import json
 import re
@@ -98,7 +98,7 @@ def _fetch_mangadex_athome_images(chapter_url: str) -> list[str]:
 @bp.get('/mangadex-chapter')
 @jwt_required()
 def mangadex_chapter():
-    from ..models import Manga
+    from ..models import Manga, UserManga
     from ..scrapers.mangadex import _get_chapter_url_by_number
 
     manga_id_raw = request.args.get('manga_id', '').strip()
@@ -112,6 +112,10 @@ def mangadex_chapter():
         chapter_float = float(chapter_raw)
     except ValueError:
         return jsonify({'error': 'Invalid parameters'}), 400
+
+    user_id = int(get_jwt_identity())
+    if not UserManga.query.filter_by(user_id=user_id, manga_id=manga_id_int).first():
+        return jsonify({'error': 'Not found'}), 404
 
     manga_obj = Manga.query.get_or_404(manga_id_int)
     if not manga_obj.mangadex_id:
@@ -192,8 +196,20 @@ _SAFE_IMAGE_TYPES = frozenset({
 
 
 @bp.get('/proxy-image')
-@jwt_required()
 def proxy_image():
+    from flask_jwt_extended import decode_token
+    token = request.args.get('token', '').strip()
+    if not token:
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header[7:]
+    if not token:
+        return jsonify({'error': 'Authentication required'}), 401
+    try:
+        decode_token(token)
+    except Exception:
+        return jsonify({'error': 'Invalid or expired token'}), 401
+
     url = validate_external_url(request.args.get('url', '').strip())
     if not url:
         return jsonify({'error': 'A valid external url parameter is required'}), 400

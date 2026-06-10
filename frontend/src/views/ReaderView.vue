@@ -119,6 +119,7 @@ import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import axios from 'axios';
 import api from '@/composables/useApi';
 import { useMangaStore } from '@/stores/manga';
+import { useAuthStore } from '@/stores/auth';
 import { chapterNumFromUrl as parseChapterNum, buildChapterUrl } from '@/utils/reader';
 
 // ── Module-level state ─────────────────────────────────────────────────────────
@@ -132,6 +133,7 @@ let prefetchAbortController: AbortController | null = null;
 const route = useRoute();
 const router = useRouter();
 const manga = useMangaStore();
+const auth = useAuthStore();
 
 const siteId = route.query.siteId as string;
 const mangaId = Number(route.query.mangaId);
@@ -182,7 +184,8 @@ const isAtLastChapter: ComputedRef<boolean> = computed(
 // ── Image helpers ──────────────────────────────────────────────────────────────
 
 function proxied(imgUrl: string): string {
-	return `${import.meta.env.VITE_API_URL ?? ''}/api/reader/proxy-image?url=${encodeURIComponent(imgUrl)}`;
+	const token = auth.token ?? '';
+	return `${import.meta.env.VITE_API_URL ?? ''}/api/reader/proxy-image?url=${encodeURIComponent(imgUrl)}&token=${encodeURIComponent(token)}`;
 }
 
 function imageSrc(i: number): string {
