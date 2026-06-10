@@ -135,6 +135,20 @@ const router = useRouter();
 const manga = useMangaStore();
 const auth = useAuthStore();
 
+const imageToken = ref<string>('');
+let imageTokenTimer: ReturnType<typeof setInterval> | null = null;
+
+async function fetchImageToken() {
+	try {
+		const { data } = await api.get<{ token: string }>('/reader/image-token');
+		imageToken.value = data.token;
+	} catch {
+		// Fall back to session token — proxy accepts it via Authorization header path,
+		// but that path won't work for <img> tags. Best-effort; images will 401 if this fails.
+		imageToken.value = auth.token ?? '';
+	}
+}
+
 const siteId = route.query.siteId as string;
 const mangaId = Number(route.query.mangaId);
 
@@ -184,8 +198,7 @@ const isAtLastChapter: ComputedRef<boolean> = computed(
 // ── Image helpers ──────────────────────────────────────────────────────────────
 
 function proxied(imgUrl: string): string {
-	const token = auth.token ?? '';
-	return `${import.meta.env.VITE_API_URL ?? ''}/api/reader/proxy-image?url=${encodeURIComponent(imgUrl)}&token=${encodeURIComponent(token)}`;
+	return `${import.meta.env.VITE_API_URL ?? ''}/api/reader/proxy-image?url=${encodeURIComponent(imgUrl)}&token=${encodeURIComponent(imageToken.value)}`;
 }
 
 function imageSrc(i: number): string {
@@ -395,6 +408,8 @@ onMounted(async () => {
 	}
 	window.addEventListener('scroll', onScroll, { passive: true });
 	window.addEventListener('keydown', handleKeydown);
+	await fetchImageToken();
+	imageTokenTimer = setInterval(fetchImageToken, 4 * 60 * 1000);
 	await fetchImages();
 });
 
@@ -402,6 +417,7 @@ onUnmounted(() => {
 	window.removeEventListener('scroll', onScroll);
 	window.removeEventListener('keydown', handleKeydown);
 	disconnectObserver();
+	if (imageTokenTimer !== null) clearInterval(imageTokenTimer);
 });
 
 onBeforeRouteLeave(() => {

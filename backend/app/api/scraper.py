@@ -233,7 +233,11 @@ def proxy():
     html = _rewrite_urls(html, url, proxy_prefix)
     html = html.replace('</body>', OVERLAY_JS + '</body>', 1)
 
-    return Response(html, content_type='text/html; charset=utf-8')
+    return Response(html, content_type='text/html; charset=utf-8', headers={
+        'Content-Security-Policy': 'sandbox allow-scripts',
+        'X-Frame-Options': 'SAMEORIGIN',
+        'Referrer-Policy': 'no-referrer',
+    })
 
 
 # ── Test selectors ─────────────────────────────────────────────────────────────
