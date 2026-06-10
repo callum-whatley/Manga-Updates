@@ -22,20 +22,25 @@ def search_site(site, title: str) -> list[dict]:
         current_app.logger.warning('[search] rejected search_url: %s', search_url)
         return []
 
+    current_app.logger.info('[search] searching %s for "%s" at %s', site.name, title, search_url)
+
     if 'yomimanga.com' in search_url:
-        return _search_yomimanga(title, search_url)
-    if 'asurascans.com' in search_url:
-        return _search_with_browser(site, search_url)
-    if 'fanfox.net' in search_url:
-        return _search_fanfox(search_url)
-    # Default: SSR search page, reuse site's existing selectors (VortexScans)
-    return scrape_with_selectors(
-        url=search_url,
-        title_selector=site.title_selector,
-        cover_selector=site.cover_selector,
-        chapter_link_selector=site.chapter_link_selector,
-        container_selector=site.container_selector,
-    )
+        results = _search_yomimanga(title, search_url)
+    elif 'asurascans.com' in search_url or 'asuracomic.net' in search_url:
+        results = _search_with_browser(site, search_url)
+    elif 'fanfox.net' in search_url:
+        results = _search_fanfox(search_url)
+    else:
+        results = scrape_with_selectors(
+            url=search_url,
+            title_selector=site.title_selector,
+            cover_selector=site.cover_selector,
+            chapter_link_selector=site.chapter_link_selector,
+            container_selector=site.container_selector,
+        )
+
+    current_app.logger.info('[search] %s returned %d results for "%s"', site.name, len(results), title)
+    return results
 
 
 YOMI_HEADERS = {
@@ -122,7 +127,9 @@ def _search_with_browser(site, search_url: str) -> list[dict]:
     from .browser import scrape_page_html
     html = scrape_page_html(search_url)
     if not html:
+        current_app.logger.warning('[search] browser scrape returned empty for %s', search_url)
         return []
+    current_app.logger.info('[search] browser scrape got %d chars for %s', len(html), search_url)
 
     soup = BeautifulSoup(html, 'html.parser')
     results = []
