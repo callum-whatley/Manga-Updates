@@ -186,33 +186,43 @@ def get_images():
     return jsonify({'images': images})
 
 
+_SAFE_IMAGE_TYPES = frozenset({
+    'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif',
+})
+
+
 @bp.get('/proxy-image')
+@jwt_required()
 def proxy_image():
     url = validate_external_url(request.args.get('url', '').strip())
     if not url:
         return jsonify({'error': 'A valid external url parameter is required'}), 400
 
     from urllib.parse import urlparse
-    headers = dict(PROXY_HEADERS)
+    req_headers = dict(PROXY_HEADERS)
     hostname = urlparse(url).hostname or ''
     if 'mangadex.network' in hostname:
-        headers['Referer'] = 'https://mangadex.org'
+        req_headers['Referer'] = 'https://mangadex.org'
     elif 'mangafox.me' in hostname or 'fanfox.net' in hostname:
-        headers['Referer'] = 'https://fanfox.net/'
+        req_headers['Referer'] = 'https://fanfox.net/'
 
     try:
-        resp = requests.get(url, stream=True, timeout=15, headers=headers)
+        resp = requests.get(url, stream=True, timeout=15, headers=req_headers, allow_redirects=False)
+        if resp.is_redirect:
+            current_app.logger.warning('proxy_image: redirect rejected for %s', url)
+            return jsonify({'error': 'Failed to fetch upstream image'}), 502
         resp.raise_for_status()
     except Exception as e:
         current_app.logger.error('proxy_image failed: %s', e)
         return jsonify({'error': 'Failed to fetch upstream image'}), 502
 
-    content_type = resp.headers.get('Content-Type', 'image/jpeg')
-    if not content_type.startswith('image/'):
+    content_type = resp.headers.get('Content-Type', '').split(';')[0].strip().lower()
+    if content_type not in _SAFE_IMAGE_TYPES:
         content_type = 'application/octet-stream'
-    headers = {
+    resp_headers = {
         'Content-Type': content_type,
         'Cache-Control': 'public, max-age=3600',
         'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': 'inline; filename="image"',
     }
-    return Response(resp.iter_content(8192), headers=headers)
+    return Response(resp.iter_content(8192), headers=resp_headers)
