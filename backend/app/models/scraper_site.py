@@ -2,6 +2,18 @@ from ..extensions import db
 from datetime import datetime, timezone
 
 
+# Preferred source order for cover art and display. Scanlation sites that host
+# the chapters we read (and whose covers match those releases) rank above the
+# aggregators (Mangafox, MangaDex) whose cover art is often a different edition.
+SOURCE_PRIORITY = ['asurascans', 'vortexscans', 'yomi manga', 'mangafox', 'mangadex']
+
+
+def source_rank(site_name: str) -> int:
+    """Lower rank = higher priority. Unknown sources sort after all known ones."""
+    name = (site_name or '').lower()
+    return SOURCE_PRIORITY.index(name) if name in SOURCE_PRIORITY else len(SOURCE_PRIORITY)
+
+
 class ScraperSite(db.Model):
     __tablename__ = 'scraper_sites'
 

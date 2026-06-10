@@ -175,7 +175,7 @@ def _search_asura(title: str, search_url: str) -> list[dict]:
         return []
 
     soup = BeautifulSoup(html, 'html.parser')
-    best_title, best_score, best_url = None, 0.0, ''
+    best_title, best_score, best_url, best_cover = None, 0.0, '', None
     for card in soup.select('div.series-card'):
         link = card.select_one('a[href*="/comics/"]')
         heading = card.select_one('h3')
@@ -187,6 +187,9 @@ def _search_asura(title: str, search_url: str) -> list[dict]:
             best_score = score
             best_title = card_title
             best_url = _abs_url(link.get('href', ''), search_url)
+            img = card.select_one('img')
+            raw_cover = img.get('src') if img else None
+            best_cover = _abs_url(raw_cover, search_url) if raw_cover else None
 
     if best_title is None or best_score < AUTO_MATCH_THRESHOLD or not best_url:
         return []
@@ -195,5 +198,5 @@ def _search_asura(title: str, search_url: str) -> list[dict]:
     if not chapter_url:
         return []
 
-    return [{'title': best_title, 'cover_url': None,
+    return [{'title': best_title, 'cover_url': best_cover,
              'chapter': chapter_num, 'chapter_url': chapter_url}]

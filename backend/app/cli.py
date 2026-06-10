@@ -27,10 +27,10 @@ _PRECONFIGURED_SITES = [
     {
         'name': 'VortexScans',
         'latest_releases_url': 'https://vortexscans.org/',
-        'container_selector': 'div.flex-1.flex.flex-col.min-w-0',
-        'title_selector': 'a[href*="/series/"]:not([href*="/chapter-"])',
+        'container_selector': 'div.bg-card',
+        'title_selector': 'a.font-bold',
         'chapter_link_selector': 'a[href*="/chapter-"]',
-        'cover_selector': None,
+        'cover_selector': 'img',
         'chapter_image_selector': 'img[data-reader-page-image]',
         'search_url_template': 'https://vortexscans.org/series?searchTerm={title}',
         'is_active': True,

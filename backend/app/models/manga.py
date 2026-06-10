@@ -1,5 +1,6 @@
 from ..extensions import db
 from datetime import datetime, timezone
+from .scraper_site import source_rank
 
 
 class Manga(db.Model):
@@ -27,7 +28,7 @@ class Manga(db.Model):
     def to_dict(self):
         sources = sorted(
             [e.to_dict() for e in self.source_entries],
-            key=lambda s: s['siteName'].lower() == 'mangadex'
+            key=lambda s: source_rank(s['siteName'])
         ) if self.source_entries else []
         return {
             'id': self.id,

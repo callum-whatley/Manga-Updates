@@ -53,8 +53,11 @@ def add_manga():
 
     existing_site_ids = {e.site_id for e in manga.source_entries}
 
-    # Search each active site for this specific title
+    # Search each active site for this specific title.
+    # Collect covers per source so we can pick one by priority afterwards rather
+    # than letting whichever source happens to be searched first (or MangaDex) win.
     from ..scrapers.search import search_site
+    scraped_covers = {}  # site_name.lower() -> cover_url
     scraper_sites = ScraperSite.query.filter(
         ScraperSite.is_active == True,
         ScraperSite.name != 'MangaDex',
@@ -64,6 +67,8 @@ def add_manga():
         matches = match_scraped_to_library(scraped, [manga])
         for m in matches['auto']:
             _upsert_source_entry(manga, site, m['scraped'])
+            if m['scraped'].get('cover_url'):
+                scraped_covers[site.name.lower()] = m['scraped']['cover_url']
 
     # MangaDex last — skip if already linked
     mdx_site = ScraperSite.query.filter_by(name='MangaDex').first()
@@ -71,7 +76,7 @@ def add_manga():
         info = mangadex_fetch_one(title)
         if info:
             if info.get('cover_url'):
-                manga.cover_url = info['cover_url']
+                scraped_covers['mangadex'] = info['cover_url']
             if not manga.mangadex_id:
                 manga.mangadex_id = info.get('mangadex_id')
             if info.get('chapter') is not None:
@@ -90,6 +95,15 @@ def add_manga():
                     'chapter_url': info['chapter_url'],
                     'cover_url': info.get('cover_url'),
                 })
+
+    # Pick cover art by source priority — scanlation covers over aggregator covers.
+    # Only overrides when this search actually found a cover, so an existing cover
+    # is never wiped by a source that returned none.
+    from ..models.scraper_site import SOURCE_PRIORITY
+    for _src in SOURCE_PRIORITY:
+        if scraped_covers.get(_src):
+            manga.cover_url = scraped_covers[_src]
+            break
 
     existing = UserManga.query.filter_by(user_id=user.id, manga_id=manga.id).first()
     if existing:
