@@ -1,0 +1,36 @@
+<template>
+	<router-view />
+</template>
+
+<script setup lang="ts">
+import { onMounted } from 'vue';
+import { useAuthStore } from '@/stores/auth';
+import { useRouter } from 'vue-router';
+
+const auth = useAuthStore();
+const router = useRouter();
+
+onMounted(async () => {
+	if (auth.isAuthenticated && !auth.user) {
+		auth.fetchUser();
+	}
+
+	// Handle Capacitor deep link callbacks (native app only)
+	try {
+		const { App: CapApp } = await import('@capacitor/app');
+		await CapApp.addListener('appUrlOpen', async (event: { url: string }) => {
+			const parsed = new URL(event.url);
+			if (parsed.pathname === '/auth/callback') {
+				const token = parsed.searchParams.get('token');
+				if (token) {
+					auth.setToken(token);
+					await auth.fetchUser();
+					router.push('/');
+				}
+			}
+		});
+	} catch {
+		// Not running in a Capacitor environment
+	}
+});
+</script>
