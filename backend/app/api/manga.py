@@ -216,11 +216,13 @@ def proxy_cover():
         resp = _requests.get(url, headers=headers, timeout=10, allow_redirects=False)
         if resp.status_code != 200:
             return '', resp.status_code
-        ct = resp.headers.get('Content-Type', '')
-        if not ct.startswith('image/'):
+        ct = resp.headers.get('Content-Type', '').split(';')[0].strip().lower()
+        if ct not in {'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'}:
             return '', 400
-        return Response(resp.content, content_type=ct,
-                        headers={'Cache-Control': 'public, max-age=86400'})
+        return Response(resp.content, content_type=ct, headers={
+            'Cache-Control': 'public, max-age=86400',
+            'X-Content-Type-Options': 'nosniff',
+        })
     except Exception:
         return '', 502
 
