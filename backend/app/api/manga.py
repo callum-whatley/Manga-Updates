@@ -192,11 +192,20 @@ def check_all():
     return jsonify([e.to_dict() for e in entries])
 
 
-_COVER_REFERERS = {
-    'uploads.mangadex.org': 'https://mangadex.org/',
-    'cdn.asurascans.com': 'https://asurascans.com/',
-    'i.asurascans.com': 'https://asurascans.com/',
-}
+_COVER_REFERER_RULES = [
+    ('uploads.mangadex.org', 'https://mangadex.org/'),
+    ('asurascans.com', 'https://asurascans.com/'),
+    ('asuracomic.net', 'https://asuracomic.net/'),
+    ('fanfox.net', 'https://fanfox.net/'),
+    ('mangafox.me', 'https://fanfox.net/'),
+]
+
+
+def _cover_referer(hostname: str) -> str:
+    for domain, referer in _COVER_REFERER_RULES:
+        if hostname == domain or hostname.endswith('.' + domain):
+            return referer
+    return ''
 
 _COVER_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -211,7 +220,7 @@ def proxy_cover():
         return '', 400
     from urllib.parse import urlparse
     hostname = urlparse(url).hostname or ''
-    headers = {**_COVER_HEADERS, 'Referer': _COVER_REFERERS.get(hostname, '')}
+    headers = {**_COVER_HEADERS, 'Referer': _cover_referer(hostname)}
     try:
         resp = _requests.get(url, headers=headers, timeout=10, allow_redirects=False)
         if resp.status_code != 200:

@@ -87,10 +87,10 @@ def fetch_chapter_images(chapter_url: str) -> list[str]:
 
 
 def get_chapter_url(latest_chapter_url: str, chapter_num: float) -> str | None:
-    """Scrape the manga page to find the correct chapter URL for chapter_num."""
-    import re
+    """Look up the correct chapter URL for chapter_num from the Fanfox manga page."""
     from urllib.parse import urljoin
     from bs4 import BeautifulSoup
+
     m = re.search(r'fanfox\.net/manga/([^/]+)/', latest_chapter_url)
     if not m:
         return None
@@ -98,16 +98,33 @@ def get_chapter_url(latest_chapter_url: str, chapter_num: float) -> str | None:
     if not re.fullmatch(r'[a-zA-Z0-9_\-]+', slug):
         return None
     manga_page_url = f'https://fanfox.net/manga/{slug}/'
+    chapter_str = str(int(chapter_num)) if chapter_num == int(chapter_num) else str(chapter_num)
 
-    from .browser import scrape_page_html
-    html = scrape_page_html(manga_page_url)
-    if not html:
+    def _find_in_html(html: str) -> str | None:
+        soup = BeautifulSoup(html, 'html.parser')
+        for a in soup.select(f'a[href*="/manga/{slug}/c{chapter_str}/"]'):
+            href = a.get('href', '')
+            if href:
+                return urljoin('https://fanfox.net', href)
         return None
 
-    soup = BeautifulSoup(html, 'html.parser')
-    chapter_str = str(int(chapter_num)) if chapter_num == int(chapter_num) else str(chapter_num)
-    for a in soup.select(f'a[href*="/manga/{slug}/c{chapter_str}/"]'):
-        href = a.get('href', '')
-        if href:
-            return urljoin('https://fanfox.net', href)
+    # Try regular requests first — Fanfox serves chapter lists SSR
+    try:
+        resp = requests.get(manga_page_url, headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        result = _find_in_html(resp.text)
+        if result:
+            return result
+    except Exception as e:
+        current_app.logger.warning('[Fanfox] requests failed for %s: %s', manga_page_url, e)
+
+    # Fall back to Playwright for JS-rendered content
+    from .browser import scrape_page_html
+    html = scrape_page_html(manga_page_url)
+    if html:
+        result = _find_in_html(html)
+        if result:
+            return result
+
+    current_app.logger.error('[Fanfox] could not find URL for %s ch.%s', slug, chapter_str)
     return None

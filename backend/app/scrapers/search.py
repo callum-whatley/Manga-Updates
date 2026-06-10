@@ -1,3 +1,4 @@
+import json
 import requests
 from urllib.parse import quote_plus
 from bs4 import BeautifulSoup
@@ -48,12 +49,22 @@ YOMI_HEADERS = {
 
 def _search_yomimanga(title: str, search_url: str) -> list[dict]:
     try:
-        resp = requests.get(search_url, headers=YOMI_HEADERS, timeout=10)
-        resp.raise_for_status()
-        if not resp.text or not resp.text.strip():
+        # Try bare request first; fall back to browser-based fetch to bypass Cloudflare
+        raw = ''
+        try:
+            resp = requests.get(search_url, headers=YOMI_HEADERS, timeout=10)
+            resp.raise_for_status()
+            if resp.text and resp.text.strip():
+                raw = resp.text
+        except Exception:
+            pass
+        if not raw:
+            from .browser import fetch_json_in_browser
+            raw = fetch_json_in_browser(search_url)
+        if not raw or not raw.strip():
             current_app.logger.warning('[search] YomiManga returned empty response for %s', search_url)
             return []
-        results = resp.json()
+        results = json.loads(raw)
         if not isinstance(results, list):
             raise ValueError('expected list response')
     except Exception as e:
