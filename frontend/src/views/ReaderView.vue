@@ -195,6 +195,34 @@ const isAtLastChapter: ComputedRef<boolean> = computed(
 	() => chapterNumFromUrl.value !== null && chapterNumFromUrl.value >= maxChapter.value,
 );
 
+// ── Chapter URL resolution ─────────────────────────────────────────────────────
+
+async function resolveChapterUrl(baseUrl: string, chapterNum: number, mangaIdParam?: number | string, signal?: AbortSignal): Promise<string> {
+	if (baseUrl.includes('mangadex.org/chapter/') && mangaIdParam) {
+		try {
+			const { data } = await api.get<{ chapter_url: string }>('/reader/mangadex-chapter', {
+				params: { manga_id: mangaIdParam, chapter: chapterNum },
+				...(signal ? { signal } : {}),
+			});
+			return data.chapter_url;
+		} catch {
+			return buildChapterUrl(baseUrl, chapterNum);
+		}
+	}
+	if (baseUrl.includes('fanfox.net')) {
+		try {
+			const { data } = await api.get<{ chapter_url: string }>('/reader/fanfox-chapter', {
+				params: { latest_chapter_url: baseUrl, chapter: chapterNum },
+				...(signal ? { signal } : {}),
+			});
+			return data.chapter_url;
+		} catch {
+			return buildChapterUrl(baseUrl, chapterNum);
+		}
+	}
+	return buildChapterUrl(baseUrl, chapterNum);
+}
+
 // ── Image helpers ──────────────────────────────────────────────────────────────
 
 function proxied(imgUrl: string): string {
@@ -254,18 +282,10 @@ async function prefetchNextChapter() {
 	prefetchAbortController = new AbortController();
 
 	let nextUrl: string;
-	if (isMangaDex.value) {
-		try {
-			const { data } = await api.get<{ chapter_url: string }>('/reader/mangadex-chapter', {
-				params: { manga_id: mangaId, chapter: nextNum },
-				signal: prefetchAbortController.signal,
-			});
-			nextUrl = data.chapter_url;
-		} catch {
-			return;
-		}
-	} else {
-		nextUrl = buildChapterUrl(currentUrl.value, nextNum);
+	try {
+		nextUrl = await resolveChapterUrl(currentUrl.value, nextNum, mangaId, prefetchAbortController.signal);
+	} catch {
+		return;
 	}
 
 	try {
@@ -344,19 +364,12 @@ async function navigateTo(newNum: number) {
 	progressSaved.value = true;
 	manga.updateProgress(mangaId, currentChapter.value, currentUrl.value);
 
-	if (isMangaDex.value) {
-		try {
-			const { data } = await api.get<{ chapter_url: string }>('/reader/mangadex-chapter', {
-				params: { manga_id: mangaId, chapter: newNum },
-			});
-			currentUrl.value = data.chapter_url;
-		} catch {
-			error.value = `Chapter ${newNum} not found on MangaDex.`;
-			navigating.value = false;
-			return;
-		}
-	} else {
-		currentUrl.value = buildChapterUrl(currentUrl.value, newNum);
+	try {
+		currentUrl.value = await resolveChapterUrl(currentUrl.value, newNum, mangaId);
+	} catch {
+		error.value = `Chapter ${newNum} not found.`;
+		navigating.value = false;
+		return;
 	}
 
 	currentChapter.value = newNum;

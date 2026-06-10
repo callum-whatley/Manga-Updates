@@ -84,3 +84,30 @@ def fetch_chapter_images(chapter_url: str) -> list[str]:
             current_app.logger.warning('[Fanfox] page %d fetch failed: %s', page, e)
 
     return [seen[k] for k in sorted(seen.keys())]
+
+
+def get_chapter_url(latest_chapter_url: str, chapter_num: float) -> str | None:
+    """Scrape the manga page to find the correct chapter URL for chapter_num."""
+    import re
+    from urllib.parse import urljoin
+    from bs4 import BeautifulSoup
+    m = re.search(r'fanfox\.net/manga/([^/]+)/', latest_chapter_url)
+    if not m:
+        return None
+    slug = m.group(1)
+    if not re.fullmatch(r'[a-zA-Z0-9_\-]+', slug):
+        return None
+    manga_page_url = f'https://fanfox.net/manga/{slug}/'
+
+    from .browser import scrape_page_html
+    html = scrape_page_html(manga_page_url)
+    if not html:
+        return None
+
+    soup = BeautifulSoup(html, 'html.parser')
+    chapter_str = str(int(chapter_num)) if chapter_num == int(chapter_num) else str(chapter_num)
+    for a in soup.select(f'a[href*="/manga/{slug}/c{chapter_str}/"]'):
+        href = a.get('href', '')
+        if href:
+            return urljoin('https://fanfox.net', href)
+    return None

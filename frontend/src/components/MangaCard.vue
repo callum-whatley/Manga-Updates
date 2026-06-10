@@ -1,7 +1,7 @@
 <template>
 	<article class="manga-card" :class="{ 'has-update': entry.hasUpdate }">
 		<div class="cover-wrap">
-			<img v-if="entry.coverUrl" :src="entry.coverUrl" :alt="entry.title" class="cover" loading="lazy" />
+			<img v-if="entry.coverUrl" :src="proxiedCoverUrl(entry.coverUrl)" :alt="entry.title" class="cover" loading="lazy" />
 			<div v-else class="cover-placeholder">
 				<span>巻</span>
 			</div>
@@ -85,6 +85,10 @@ const props = defineProps<{ entry: MangaEntry }>();
 const manga = useMangaStore();
 const router = useRouter();
 
+function proxiedCoverUrl(url: string): string {
+	return `${import.meta.env.VITE_API_URL ?? ''}/api/manga/cover?url=${encodeURIComponent(url)}`;
+}
+
 function onChapterClick(chapter: number, url: string) {
 	manga.updateProgress(props.entry.id, chapter, url);
 }
@@ -108,6 +112,15 @@ async function openReader(src: MangaSource) {
 			url = data.chapter_url;
 		} catch {
 			url = src.latestChapterUrl!;
+		}
+	} else if (src.latestChapterUrl?.includes('fanfox.net')) {
+		try {
+			const { data } = await api.get<{ chapter_url: string }>('/reader/fanfox-chapter', {
+				params: { latest_chapter_url: src.latestChapterUrl, chapter: next },
+			});
+			url = data.chapter_url;
+		} catch {
+			url = buildChapterUrl(src.latestChapterUrl!, next);
 		}
 	} else {
 		url = buildChapterUrl(src.latestChapterUrl!, next);

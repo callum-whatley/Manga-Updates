@@ -37,10 +37,22 @@ def search_site(site, title: str) -> list[dict]:
     )
 
 
+YOMI_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://yomimanga.com/',
+    'Origin': 'https://yomimanga.com',
+}
+
+
 def _search_yomimanga(title: str, search_url: str) -> list[dict]:
     try:
-        resp = requests.get(search_url, headers=HEADERS, timeout=10)
+        resp = requests.get(search_url, headers=YOMI_HEADERS, timeout=10)
         resp.raise_for_status()
+        if not resp.text or not resp.text.strip():
+            current_app.logger.warning('[search] YomiManga returned empty response for %s', search_url)
+            return []
         results = resp.json()
         if not isinstance(results, list):
             raise ValueError('expected list response')

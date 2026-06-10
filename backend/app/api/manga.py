@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..extensions import db
 from ..models import Manga, UserManga, User
@@ -9,6 +9,7 @@ from ..scrapers.matcher import match_scraped_to_library
 from .sanitize import sanitize_str, validate_external_url
 from datetime import datetime, timezone
 import re
+import requests as _requests
 
 bp = Blueprint('manga', __name__)
 
@@ -189,6 +190,39 @@ def check_all():
 
     db.session.commit()
     return jsonify([e.to_dict() for e in entries])
+
+
+_COVER_REFERERS = {
+    'uploads.mangadex.org': 'https://mangadex.org/',
+    'cdn.asurascans.com': 'https://asurascans.com/',
+    'i.asurascans.com': 'https://asurascans.com/',
+}
+
+_COVER_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+}
+
+
+@bp.get('/cover')
+def proxy_cover():
+    raw_url = request.args.get('url', '')
+    url = validate_external_url(raw_url)
+    if not url:
+        return '', 400
+    from urllib.parse import urlparse
+    hostname = urlparse(url).hostname or ''
+    headers = {**_COVER_HEADERS, 'Referer': _COVER_REFERERS.get(hostname, '')}
+    try:
+        resp = _requests.get(url, headers=headers, timeout=10, allow_redirects=False)
+        if resp.status_code != 200:
+            return '', resp.status_code
+        ct = resp.headers.get('Content-Type', '')
+        if not ct.startswith('image/'):
+            return '', 400
+        return Response(resp.content, content_type=ct,
+                        headers={'Cache-Control': 'public, max-age=86400'})
+    except Exception:
+        return '', 502
 
 
 def _upsert_source_entry(manga, site, scraped: dict):

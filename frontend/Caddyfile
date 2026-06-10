@@ -2,6 +2,11 @@
     handle /api/* {
         reverse_proxy {$BACKEND_INTERNAL_URL}
     }
+    handle /auth/callback {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
     handle /auth/* {
         reverse_proxy {$BACKEND_INTERNAL_URL}
     }

@@ -136,6 +136,31 @@ def mangadex_chapter():
     return jsonify({'chapter_url': validated_url})
 
 
+@bp.route('/fanfox-chapter')
+@jwt_required()
+def fanfox_chapter():
+    latest_url = request.args.get('latest_chapter_url', '')
+    chapter = request.args.get('chapter', type=float)
+    if not latest_url or chapter is None:
+        return jsonify({'error': 'latest_chapter_url and chapter required'}), 400
+    if not validate_external_url(latest_url):
+        return jsonify({'error': 'Invalid URL'}), 400
+    from urllib.parse import urlparse as _urlparse
+    if not (_urlparse(latest_url).hostname or '').endswith('fanfox.net'):
+        return jsonify({'error': 'URL must be a fanfox.net URL'}), 400
+
+    from ..scrapers.fanfox import get_chapter_url
+    chapter_url = get_chapter_url(latest_url, chapter)
+    if not chapter_url:
+        return jsonify({'error': 'Chapter not found'}), 404
+
+    validated = validate_external_url(chapter_url)
+    if not validated:
+        return jsonify({'error': 'Invalid chapter URL'}), 400
+
+    return jsonify({'chapter_url': validated})
+
+
 @bp.get('/images')
 @jwt_required()
 def get_images():
