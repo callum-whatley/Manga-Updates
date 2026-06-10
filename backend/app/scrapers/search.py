@@ -163,6 +163,23 @@ def _asura_latest_chapter(series_url: str) -> tuple[float, str | None]:
     return best_num, _abs_url(best_href, safe)
 
 
+# Fallback queries on AsuraScans return a broad, noisy result set, so demand a
+# higher title-match score than the normal auto-match bar to avoid false positives
+# (e.g. unrelated "... of the ..." titles can score in the mid-80s via fuzzy match).
+ASURA_FALLBACK_THRESHOLD = 90
+_ASURA_STOPWORDS = {'the', 'a', 'an', 'of', 'to', 'in', 'and', 'or', 'for', 'my'}
+
+
+def _asura_fallback_word(title: str) -> str:
+    """First meaningful word for a retry query — skips leading stopwords and very
+    short tokens so we don't search something like the bare word "The"."""
+    words = re.findall(r'[A-Za-z0-9]+', title)
+    for w in words:
+        if w.lower() not in _ASURA_STOPWORDS and len(w) >= 3:
+            return w
+    return words[0] if words else ''
+
+
 def _asura_best_match(html: str, title: str, base_url: str):
     """Best (title, url, cover, score) among browse cards, or None."""
     soup = BeautifulSoup(html, 'html.parser')
@@ -190,21 +207,22 @@ def _search_asura(title: str, search_url: str) -> list[dict]:
 
     AsuraScans' search is fussy: full titles with apostrophes/punctuation (e.g.
     "Immortal's Way of Life", whose real title uses a curly apostrophe) or some
-    multi-word queries return zero results, while the first word alone finds the
-    series. So if the full-title query yields no qualifying match, retry with just
-    the first alphanumeric word and rank the results by title score.
+    multi-word queries return zero results, while a single significant word finds
+    the series. So if the full-title query yields no confident match, retry with
+    the first meaningful word and require a stricter score on that broad result set.
     """
     html = _fetch_asura_html(search_url)
     best = _asura_best_match(html, title, search_url) if html else None
 
     if best is None or best[3] < AUTO_MATCH_THRESHOLD:
-        first_word = next(iter(re.findall(r'[A-Za-z0-9]+', title)), '')
-        if first_word and first_word.lower() != title.strip().lower():
-            retry_url = search_url.replace(quote_plus(title), quote_plus(first_word))
-            current_app.logger.info('[search] AsuraScans retrying with first word %r', first_word)
+        word = _asura_fallback_word(title)
+        if word and word.lower() != title.strip().lower():
+            retry_url = search_url.replace(quote_plus(title), quote_plus(word))
+            current_app.logger.info('[search] AsuraScans retrying with word %r', word)
             retry_html = _fetch_asura_html(retry_url)
             retry_best = _asura_best_match(retry_html, title, retry_url) if retry_html else None
-            if retry_best and (best is None or retry_best[3] > best[3]):
+            # Only trust the noisy fallback result on a strong match.
+            if retry_best and retry_best[3] >= ASURA_FALLBACK_THRESHOLD:
                 best = retry_best
 
     if best is None or best[3] < AUTO_MATCH_THRESHOLD or not best[1]:
