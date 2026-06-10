@@ -23,8 +23,8 @@ def _fetch(url: str) -> BeautifulSoup | None:
 
 
 def _extract_chapter_number(text: str, href: str = '') -> float:
-    # Try URL first — more reliable than link text (e.g. /chapter/76)
-    url_match = re.search(r'/chapter[s]?/(\d+\.?\d*)', href, re.IGNORECASE)
+    # Try URL first — more reliable than link text (e.g. /chapter/76 or /chapter-261)
+    url_match = re.search(r'/chapter[s]?[/-](\d+\.?\d*)', href, re.IGNORECASE)
     if url_match:
         return float(url_match.group(1))
     match = re.search(r'(\d+\.?\d*)', text)

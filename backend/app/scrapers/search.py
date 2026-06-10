@@ -1,10 +1,11 @@
+import re
 import json
 import requests
 from urllib.parse import quote_plus
 from bs4 import BeautifulSoup
 from flask import current_app
 
-from .generic import scrape_with_selectors, _extract_from_container, _extract_chapter_number, _abs_url
+from .generic import scrape_with_selectors, _extract_chapter_number, _abs_url
 from .matcher import _score, AUTO_MATCH_THRESHOLD
 from ..api.sanitize import validate_external_url
 
@@ -27,7 +28,7 @@ def search_site(site, title: str) -> list[dict]:
     if 'yomimanga.com' in search_url:
         results = _search_yomimanga(title, search_url)
     elif 'asurascans.com' in search_url or 'asuracomic.net' in search_url:
-        results = _search_with_browser(site, search_url)
+        results = _search_asura(title, search_url)
     elif 'fanfox.net' in search_url:
         results = _search_fanfox(search_url)
     else:
@@ -123,25 +124,76 @@ def _search_fanfox(search_url: str) -> list[dict]:
     )
 
 
-def _search_with_browser(site, search_url: str) -> list[dict]:
+ASURA_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Referer': 'https://www.asurascans.com/',
+}
+
+
+def _fetch_asura_html(url: str) -> str:
+    """Fetch an AsuraScans page; plain requests works, with a browser fallback for Cloudflare."""
+    try:
+        resp = requests.get(url, headers=ASURA_HEADERS, timeout=15)
+        resp.raise_for_status()
+        if resp.text and resp.text.strip():
+            return resp.text
+    except Exception as e:
+        current_app.logger.warning('[search] AsuraScans requests fetch failed for %s: %s', url, e)
     from .browser import scrape_page_html
-    html = scrape_page_html(search_url)
+    return scrape_page_html(url) or ''
+
+
+def _asura_latest_chapter(series_url: str) -> tuple[float, str | None]:
+    """Resolve the latest chapter (number, url) from an AsuraScans series page."""
+    safe = validate_external_url(series_url)
+    if not safe:
+        current_app.logger.warning('[search] AsuraScans: rejected series url %s', series_url)
+        return 0.0, None
+    html = _fetch_asura_html(safe)
     if not html:
-        current_app.logger.warning('[search] browser scrape returned empty for %s', search_url)
+        return 0.0, None
+    soup = BeautifulSoup(html, 'html.parser')
+    best_num, best_href = -1.0, None
+    for a in soup.select('a[href*="/chapter/"]'):
+        m = re.search(r'/chapter/(\d+\.?\d*)', a.get('href', ''))
+        if m and float(m.group(1)) > best_num:
+            best_num, best_href = float(m.group(1)), a.get('href', '')
+    if best_href is None:
+        return 0.0, None
+    return best_num, _abs_url(best_href, safe)
+
+
+def _search_asura(title: str, search_url: str) -> list[dict]:
+    """
+    Search AsuraScans. The browse page links to series pages (/comics/{slug}) but
+    carries no chapter links, so we pick the best title match and resolve its latest
+    chapter from the series page.
+    """
+    html = _fetch_asura_html(search_url)
+    if not html:
+        current_app.logger.warning('[search] AsuraScans returned empty for %s', search_url)
         return []
-    current_app.logger.info('[search] browser scrape got %d chars for %s', len(html), search_url)
 
     soup = BeautifulSoup(html, 'html.parser')
-    results = []
-    if site.container_selector:
-        for container in soup.select(site.container_selector):
-            item = _extract_from_container(
-                container,
-                site.title_selector,
-                site.cover_selector,
-                site.chapter_link_selector,
-                search_url,
-            )
-            if item:
-                results.append(item)
-    return results
+    best_title, best_score, best_url = None, 0.0, ''
+    for card in soup.select('div.series-card'):
+        link = card.select_one('a[href*="/comics/"]')
+        heading = card.select_one('h3')
+        if not link or not heading:
+            continue
+        card_title = heading.get_text(strip=True)
+        score = _score(title, card_title)
+        if score > best_score:
+            best_score = score
+            best_title = card_title
+            best_url = _abs_url(link.get('href', ''), search_url)
+
+    if best_title is None or best_score < AUTO_MATCH_THRESHOLD or not best_url:
+        return []
+
+    chapter_num, chapter_url = _asura_latest_chapter(best_url)
+    if not chapter_url:
+        return []
+
+    return [{'title': best_title, 'cover_url': None,
+             'chapter': chapter_num, 'chapter_url': chapter_url}]

@@ -102,9 +102,13 @@ def get_chapter_url(latest_chapter_url: str, chapter_num: float) -> str | None:
 
     def _find_in_html(html: str) -> str | None:
         soup = BeautifulSoup(html, 'html.parser')
-        for a in soup.select(f'a[href*="/manga/{slug}/c{chapter_str}/"]'):
+        # Chapter URLs include an optional volume segment and zero-padded chapter
+        # number, e.g. /manga/toriko/v01/c001/1.html or /manga/toriko/vTBD/c396/1.html
+        pattern = re.compile(rf'/manga/{re.escape(slug)}/(?:v[^/]+/)?c(\d+\.?\d*)/')
+        for a in soup.select(f'a[href*="/manga/{slug}/"]'):
             href = a.get('href', '')
-            if href:
+            m = pattern.search(href)
+            if m and float(m.group(1)) == chapter_num:
                 return urljoin('https://fanfox.net', href)
         return None
 
