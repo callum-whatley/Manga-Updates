@@ -114,14 +114,33 @@ def _search_yomimanga(title: str, search_url: str) -> list[dict]:
     return [{'title': best.get('title', ''), 'cover_url': None, 'chapter': chapter_num, 'chapter_url': chapter_url}]
 
 
+_NOVEL_TITLE_RE = re.compile(r'\(\s*(?:light\s+)?novel\s*\)', re.IGNORECASE)
+
+
+def _is_novel_result(item: dict) -> bool:
+    """A light-novel entry rather than the manga.
+
+    Fanfox lists the novel adaptation alongside the manga with an identical title
+    (bar a "(Novel)" suffix that fuzzy matching strips) and a _novel slug suffix,
+    e.g. /manga/<slug>_novel/. Both would otherwise tie the manga on score and the
+    novel — which has no readable pages here — can win on ordering.
+    """
+    url = item.get('chapter_url') or ''
+    title = item.get('title') or ''
+    if re.search(r'_novel(?=/|$)', url, re.IGNORECASE):
+        return True
+    return bool(_NOVEL_TITLE_RE.search(title))
+
+
 def _search_fanfox(search_url: str) -> list[dict]:
-    return scrape_with_selectors(
+    results = scrape_with_selectors(
         url=search_url,
         container_selector='ul.manga-list-4-list > li',
         title_selector='p.manga-list-4-item-title a',
         chapter_link_selector='p.manga-list-4-item-tip a[href*=".html"]',
         cover_selector='img.manga-list-4-cover',
     )
+    return [r for r in results if not _is_novel_result(r)]
 
 
 ASURA_HEADERS = {
