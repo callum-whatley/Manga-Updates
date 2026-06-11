@@ -20,7 +20,7 @@ class Config:
     SESSION_COOKIE_SECURE = True
 
     NATIVE_CALLBACK_SCHEME = os.environ.get('NATIVE_CALLBACK_SCHEME', 'mangaupdates')
-    CAPACITOR_ORIGINS = os.environ.get('CAPACITOR_ORIGINS', 'capacitor://localhost,http://localhost')
+    CAPACITOR_ORIGINS = os.environ.get('CAPACITOR_ORIGINS', 'capacitor://localhost,http://localhost,https://localhost')
 
     @property
     def ALLOWED_ORIGINS(self):
