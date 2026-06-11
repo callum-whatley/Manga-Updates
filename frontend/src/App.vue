@@ -19,24 +19,16 @@ onMounted(async () => {
 	try {
 		const { App: CapApp } = await import('@capacitor/app');
 		await CapApp.addListener('appUrlOpen', async (event: { url: string }) => {
-			console.log('[OAuth] appUrlOpen fired');
 			// new URL() throws for custom schemes in Android WebView — use regex instead
 			const match = event.url.match(/[?&]token=([^&]+)/);
 			const token = match ? decodeURIComponent(match[1]) : null;
-			console.log('[OAuth] token found:', !!token);
 			if (token) {
 				try {
 					const { Browser } = await import('@capacitor/browser');
 					await Browser.close();
 				} catch { /* ignore if already closed */ }
 				auth.setToken(token);
-				try {
-					await auth.fetchUser();
-					console.log('[OAuth] fetchUser success, user:', auth.user?.email);
-				} catch (e) {
-					console.error('[OAuth] fetchUser failed:', e);
-				}
-				console.log('[OAuth] isAuthenticated:', auth.isAuthenticated, '— pushing /');
+				await auth.fetchUser();
 				router.push('/');
 			}
 		});
