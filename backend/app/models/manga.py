@@ -19,10 +19,14 @@ class Manga(db.Model):
     user_entries = db.relationship('UserManga', back_populates='manga', cascade='all, delete-orphan')
     source_entries = db.relationship('MangaSourceEntry', back_populates='manga', cascade='all, delete-orphan')
 
+    @property
+    def active_source_entries(self):
+        return [e for e in self.source_entries if not e.is_removed]
+
     def best_chapter(self) -> float:
         """Highest chapter number across all sources."""
-        if self.source_entries:
-            return max((e.latest_chapter for e in self.source_entries), default=0.0)
+        if self.active_source_entries:
+            return max((e.latest_chapter for e in self.active_source_entries), default=0.0)
         return self.latest_chapter
 
     def preferred_cover(self) -> str | None:
@@ -33,7 +37,7 @@ class Manga(db.Model):
         cover if none remain). Falls back to the denormalised manga-level cover
         only when no source carries one.
         """
-        with_cover = [e for e in self.source_entries if e.cover_url]
+        with_cover = [e for e in self.active_source_entries if e.cover_url]
         if with_cover:
             best = min(with_cover, key=lambda e: source_rank(e.site.name))
             return best.cover_url
@@ -41,9 +45,9 @@ class Manga(db.Model):
 
     def to_dict(self):
         sources = sorted(
-            [e.to_dict() for e in self.source_entries],
+            [e.to_dict() for e in self.active_source_entries],
             key=lambda s: source_rank(s['siteName'])
-        ) if self.source_entries else []
+        ) if self.active_source_entries else []
         return {
             'id': self.id,
             'title': self.title,

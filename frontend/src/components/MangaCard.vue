@@ -291,7 +291,7 @@ async function handleRemoveSource(siteId: number) {
 }
 
 .source-remove-btn {
-	display: none;
+	opacity: 0.4;
 	border: none;
 	background: transparent;
 	color: var(--muted);
@@ -299,14 +299,11 @@ async function handleRemoveSource(siteId: number) {
 	line-height: 1;
 	padding: 0 2px;
 	cursor: pointer;
-	transition: color 0.15s;
+	transition: color 0.15s, opacity 0.15s;
 }
 
 .source-remove-btn:hover {
 	color: var(--accent);
-}
-
-.source-row:hover .source-remove-btn {
-	display: inline;
+	opacity: 1;
 }
 </style>

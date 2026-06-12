@@ -1,5 +1,5 @@
 <template>
-	<div class="reader-page">
+	<div class="reader-page" @touchstart.passive="onTouchStart" @touchend.passive="onTouchEnd">
 		<header class="reader-header">
 			<button class="back-btn" @click="router.back()">
 				<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -51,7 +51,16 @@
 		<div v-if="loading" class="reader-state">
 			<div class="spinner" />
 		</div>
-		<div v-else-if="error" class="reader-state error">{{ error }}</div>
+		<div v-else-if="error" class="reader-state error">
+			<p>{{ error }}</p>
+			<button class="retry-btn" @click="fetchImages">
+				<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+					<polyline points="23 4 23 10 17 10" />
+					<path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+				</svg>
+				Retry
+			</button>
+		</div>
 
 		<!-- Strip mode -->
 		<div v-else-if="displayMode === 'strip'" class="reader-images reader-images--strip">
@@ -401,6 +410,25 @@ function handleKeydown(e: KeyboardEvent) {
 	else if (e.key === 'ArrowRight') navigateTo((chapterNumFromUrl.value ?? 0) + 1);
 }
 
+// ── Touch / swipe gestures ─────────────────────────────────────────────────────
+
+let touchStartX = 0;
+let touchStartY = 0;
+
+function onTouchStart(e: TouchEvent) {
+	touchStartX = e.touches[0].clientX;
+	touchStartY = e.touches[0].clientY;
+}
+
+function onTouchEnd(e: TouchEvent) {
+	const dx = e.changedTouches[0].clientX - touchStartX;
+	const dy = e.changedTouches[0].clientY - touchStartY;
+	if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx)) return;
+	if (chapterNumFromUrl.value === null) return;
+	if (dx < 0) navigateTo(chapterNumFromUrl.value + 1); // swipe left → next
+	else navigateTo(chapterNumFromUrl.value - 1);         // swipe right → prev
+}
+
 // ── Scroll to top ──────────────────────────────────────────────────────────────
 
 function onScroll() {
@@ -459,6 +487,7 @@ onBeforeRouteLeave(() => {
 	width: 100%;
 	max-width: 800px;
 	padding: 0.6rem 1rem;
+	padding-top: max(0.6rem, env(safe-area-inset-top));
 	display: flex;
 	align-items: center;
 	justify-content: space-between;

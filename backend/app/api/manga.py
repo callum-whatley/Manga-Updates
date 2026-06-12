@@ -134,13 +134,13 @@ def remove_source_entry(manga_id: int, site_id: int):
 
     entry = MangaSourceEntry.query.filter_by(manga_id=manga_id, site_id=site_id).first_or_404()
     manga = entry.manga
-    db.session.delete(entry)
-    db.session.flush()  # so manga.source_entries reflects the removal
+    entry.is_removed = True
+    db.session.flush()  # so manga.active_source_entries reflects the removal
 
     # Re-sync the denormalised cover to whatever the remaining sources offer, so
     # removing the source a cover came from falls back to the next available one.
     from ..models.scraper_site import source_rank
-    remaining = [e for e in manga.source_entries if e.cover_url]
+    remaining = [e for e in manga.active_source_entries if e.cover_url]
     manga.cover_url = (
         min(remaining, key=lambda e: source_rank(e.site.name)).cover_url
         if remaining else None
@@ -280,10 +280,10 @@ def _upsert_source_entry(manga, site, scraped: dict):
     cover = scraped.get('cover_url')
     entry = MangaSourceEntry.query.filter_by(manga_id=manga.id, site_id=site.id).first()
     if entry:
+        if entry.is_removed:
+            return  # user deliberately removed this source — never re-add automatically
         entry.latest_chapter = scraped['chapter']
         entry.latest_chapter_url = scraped['chapter_url']
-        if cover:
-            entry.cover_url = cover
         entry.updated_at = datetime.now(timezone.utc)
     else:
         db.session.add(MangaSourceEntry(
