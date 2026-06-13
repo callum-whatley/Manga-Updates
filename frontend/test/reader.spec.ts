@@ -84,7 +84,28 @@ describe('buildChapterUrl', () => {
 	it('does not alter unrelated parts of the URL', () => {
 		const url = 'https://site.com/series/foo-123abc/chapter/7';
 		const result = buildChapterUrl(url, 8);
-		assert.ok(result.startsWith('https://site.com/series/foo-123abc/chapter/'));
-		assert.ok(result.endsWith('/8'));
+		assert.ok(result!.startsWith('https://site.com/series/foo-123abc/chapter/'));
+		assert.ok(result!.endsWith('/8'));
+	});
+
+	it('returns null for a Fanfox volume-prefixed URL', () => {
+		assert.equal(
+			buildChapterUrl('https://fanfox.net/manga/vinland-saga/v25/c220/1.html', 221),
+			null,
+		);
+	});
+
+	it('returns null for a Fanfox URL with volume v01', () => {
+		assert.equal(
+			buildChapterUrl('https://fanfox.net/manga/vinland-saga/v01/c001/1.html', 220),
+			null,
+		);
+	});
+
+	it('returns null regardless of volume number for Fanfox volume-prefixed URL', () => {
+		assert.equal(
+			buildChapterUrl('https://fanfox.net/manga/some-manga/v99/c500/1.html', 501),
+			null,
+		);
 	});
 });

@@ -119,11 +119,16 @@ async function openReader(src: MangaSource) {
 				params: { latest_chapter_url: src.latestChapterUrl, chapter: next },
 			});
 			url = data.chapter_url;
-		} catch {
-			url = buildChapterUrl(src.latestChapterUrl!, next);
+		} catch (err) {
+			const fallback = buildChapterUrl(src.latestChapterUrl!, next);
+			if (fallback === null) {
+				console.error('Cannot navigate to Fanfox chapter: volume-prefixed URL cannot be resolved client-side.', err);
+				return;
+			}
+			url = fallback;
 		}
 	} else {
-		url = buildChapterUrl(src.latestChapterUrl!, next);
+		url = buildChapterUrl(src.latestChapterUrl!, next) ?? src.latestChapterUrl!;
 	}
 	manga.updateProgress(props.entry.id, next, url);
 	router.push({ name: 'reader', query: { url, siteId: src.siteId, mangaId: props.entry.id, chapter: next } });

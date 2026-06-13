@@ -215,7 +215,7 @@ async function resolveChapterUrl(baseUrl: string, chapterNum: number, mangaIdPar
 			});
 			return data.chapter_url;
 		} catch {
-			return buildChapterUrl(baseUrl, chapterNum);
+			return buildChapterUrl(baseUrl, chapterNum) ?? baseUrl;
 		}
 	}
 	if (baseUrl.includes('fanfox.net')) {
@@ -225,11 +225,15 @@ async function resolveChapterUrl(baseUrl: string, chapterNum: number, mangaIdPar
 				...(signal ? { signal } : {}),
 			});
 			return data.chapter_url;
-		} catch {
-			return buildChapterUrl(baseUrl, chapterNum);
+		} catch (err) {
+			const fallback = buildChapterUrl(baseUrl, chapterNum);
+			if (fallback === null) {
+				throw new Error(`Cannot navigate to Fanfox chapter ${chapterNum}: volume-prefixed URL cannot be resolved client-side.`);
+			}
+			return fallback;
 		}
 	}
-	return buildChapterUrl(baseUrl, chapterNum);
+	return buildChapterUrl(baseUrl, chapterNum) ?? baseUrl;
 }
 
 // ── Image helpers ──────────────────────────────────────────────────────────────
