@@ -388,16 +388,19 @@ def test_chapter():
 
 def _upsert_source_entry(manga, site, scraped: dict):
     entry = MangaSourceEntry.query.filter_by(manga_id=manga.id, site_id=site.id).first()
+    safe_title = sanitize_str(scraped.get('title'), max_length=500)
     if entry:
         entry.latest_chapter = scraped['chapter']
         entry.latest_chapter_url = scraped['chapter_url']
         entry.updated_at = datetime.now(timezone.utc)
+        entry.scraped_title = safe_title
     else:
         db.session.add(MangaSourceEntry(
             manga_id=manga.id,
             site_id=site.id,
             latest_chapter=scraped['chapter'],
             latest_chapter_url=scraped['chapter_url'],
+            scraped_title=safe_title,
         ))
     if not manga.cover_url and scraped.get('cover_url'):
         manga.cover_url = scraped['cover_url']

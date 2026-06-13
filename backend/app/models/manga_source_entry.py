@@ -12,6 +12,7 @@ class MangaSourceEntry(db.Model):
     latest_chapter = db.Column(db.Float, default=0.0)
     latest_chapter_url = db.Column(db.String(500))
     cover_url = db.Column(db.String(500), nullable=True)
+    scraped_title = db.Column(db.String(500), nullable=True)
     is_removed = db.Column(db.Boolean, nullable=False, default=False)
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -27,4 +28,5 @@ class MangaSourceEntry(db.Model):
             'latestChapter': self.latest_chapter,
             'latestChapterUrl': self.latest_chapter_url,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
+            'scrapedTitle': self.scraped_title,
         }

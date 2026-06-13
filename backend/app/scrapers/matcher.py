@@ -45,23 +45,33 @@ def match_scraped_to_library(
     auto = []
     suggest = []
 
+    # Build all candidate (manga, scraped_item, score) triples above the threshold.
+    candidates = []
     for manga in library_manga:
-        best_score = 0.0
-        best_scraped = None
-
         for item in scraped:
             s = _score(manga.title, item['title'])
-            if s > best_score:
-                best_score = s
-                best_scraped = item
+            if s >= SUGGEST_THRESHOLD:
+                candidates.append((s, manga, item))
 
-        if best_scraped is None:
+    # Greedy bipartite assignment: sort by score descending, claim each side at most once.
+    # manga is keyed by its stable DB primary key; scraped dicts are keyed by object
+    # identity (id()) — safe because all items remain alive in `candidates` throughout.
+    candidates.sort(key=lambda t: t[0], reverse=True)
+    claimed_manga: set[int] = set()
+    claimed_scraped: set[int] = set()
+
+    for score, manga, item in candidates:
+        manga_key = manga.id
+        item_key = id(item)
+        if manga_key in claimed_manga or item_key in claimed_scraped:
             continue
+        claimed_manga.add(manga_key)
+        claimed_scraped.add(item_key)
 
-        entry = {'manga': manga, 'scraped': best_scraped, 'score': best_score}
-        if best_score >= AUTO_MATCH_THRESHOLD:
+        entry = {'manga': manga, 'scraped': item, 'score': score}
+        if score >= AUTO_MATCH_THRESHOLD:
             auto.append(entry)
-        elif best_score >= SUGGEST_THRESHOLD:
+        else:
             suggest.append(entry)
 
     return {'auto': auto, 'suggest': suggest}

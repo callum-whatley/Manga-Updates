@@ -5,11 +5,14 @@ from ..models import Manga, UserManga, User
 from ..scrapers import scrape_site
 from ..scrapers.mangadex import _fetch_one as mangadex_fetch_one
 from ..models import ScraperSite, MangaSourceEntry
-from ..scrapers.matcher import match_scraped_to_library
+from ..scrapers.matcher import match_scraped_to_library, _score
 from .sanitize import sanitize_str, validate_external_url
 from datetime import datetime, timezone
+import logging
 import re
 import requests as _requests
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint('manga', __name__)
 
@@ -278,13 +281,26 @@ def proxy_cover():
 def _upsert_source_entry(manga, site, scraped: dict):
     from ..models import MangaSourceEntry
     cover = scraped.get('cover_url')
+    new_title = sanitize_str(scraped.get('title'), max_length=500)
     entry = MangaSourceEntry.query.filter_by(manga_id=manga.id, site_id=site.id).first()
     if entry:
         if entry.is_removed:
             return  # user deliberately removed this source — never re-add automatically
+        # Guard against a different series hijacking an existing entry.
+        if entry.scraped_title and new_title:
+            title_score = _score(entry.scraped_title, new_title)
+            if title_score < 80:
+                logger.warning(
+                    'Skipping source entry update for manga %r (id=%s, site=%s): '
+                    'new scraped title %r scored %.1f against stored %r (threshold 80)',
+                    manga.title, manga.id, site.id, new_title[:200], title_score, entry.scraped_title,
+                )
+                return
         entry.latest_chapter = scraped['chapter']
         entry.latest_chapter_url = scraped['chapter_url']
         entry.updated_at = datetime.now(timezone.utc)
+        if not entry.scraped_title and new_title:
+            entry.scraped_title = new_title
     else:
         db.session.add(MangaSourceEntry(
             manga_id=manga.id,
@@ -292,6 +308,7 @@ def _upsert_source_entry(manga, site, scraped: dict):
             latest_chapter=scraped['chapter'],
             latest_chapter_url=scraped['chapter_url'],
             cover_url=cover,
+            scraped_title=new_title,
         ))
     # Keep the manga-level cover as a denormalised fallback (used when no source
     # carries a cover). Per-source covers drive the displayed cover via
