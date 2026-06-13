@@ -237,3 +237,24 @@ def test_parse_returns_none_on_empty_html():
     soup = BeautifulSoup("<html><body></body></html>", "html.parser")
     result = _parse_latest_free_chapter(soup, "https://asurascans.com/comics/foo")
     assert result is None
+
+
+# ── Regression: the www subdomain is dead (returns HTTP 525) ──────────────────
+#
+# AsuraScans killed www.asurascans.com — it now fails the Cloudflare→origin SSL
+# handshake (525), serving an empty body. Every Asura URL must use the apex
+# domain; a www host silently yields empty chapter-image arrays (and broken
+# search). Guard the seeded config and the search Referer against regressing.
+
+def test_preconfigured_asura_uses_apex_domain():
+    from app.cli import _PRECONFIGURED_SITES
+
+    asura = next(s for s in _PRECONFIGURED_SITES if s["name"] == "AsuraScans")
+    assert "www.asurascans.com" not in asura["search_url_template"]
+    assert "www.asurascans.com" not in asura["latest_releases_url"]
+
+
+def test_asura_request_referer_uses_apex_domain():
+    from app.scrapers.search import ASURA_HEADERS
+
+    assert "www.asurascans.com" not in ASURA_HEADERS["Referer"]

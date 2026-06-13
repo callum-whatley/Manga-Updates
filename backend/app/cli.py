@@ -21,7 +21,7 @@ _PRECONFIGURED_SITES = [
         'chapter_link_selector': 'a[href*="/chapter/"]',
         'cover_selector': 'img',
         'chapter_image_selector': 'browser:img[src*="/asura-images/chapters/"]',
-        'search_url_template': 'https://www.asurascans.com/browse?search={title}',
+        'search_url_template': 'https://asurascans.com/browse?search={title}',
         'is_active': True,
     },
     {
