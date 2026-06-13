@@ -233,7 +233,11 @@ async function resolveChapterUrl(baseUrl: string, chapterNum: number, mangaIdPar
 			return fallback;
 		}
 	}
-	return buildChapterUrl(baseUrl, chapterNum) ?? baseUrl;
+	const resolved = buildChapterUrl(baseUrl, chapterNum);
+	if (resolved === null) {
+		throw new Error(`Cannot navigate to chapter ${chapterNum}: volume-prefixed URL cannot be resolved client-side.`);
+	}
+	return resolved;
 }
 
 // ── Image helpers ──────────────────────────────────────────────────────────────

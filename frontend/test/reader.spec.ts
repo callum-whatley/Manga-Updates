@@ -88,6 +88,13 @@ describe('buildChapterUrl', () => {
 		assert.ok(result!.endsWith('/8'));
 	});
 
+	it('replaces the chapter number in a Fanfox non-volume URL', () => {
+		assert.equal(
+			buildChapterUrl('https://fanfox.net/manga/vinland-saga/c219/1.html', 220),
+			'https://fanfox.net/manga/vinland-saga/c220/1.html',
+		);
+	});
+
 	it('returns null for a Fanfox volume-prefixed URL', () => {
 		assert.equal(
 			buildChapterUrl('https://fanfox.net/manga/vinland-saga/v25/c220/1.html', 221),

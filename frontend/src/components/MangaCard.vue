@@ -128,7 +128,12 @@ async function openReader(src: MangaSource) {
 			url = fallback;
 		}
 	} else {
-		url = buildChapterUrl(src.latestChapterUrl!, next) ?? src.latestChapterUrl!;
+		const fallback = buildChapterUrl(src.latestChapterUrl!, next);
+		if (fallback === null) {
+			console.error('Cannot navigate to chapter: volume-prefixed URL cannot be resolved client-side.');
+			return;
+		}
+		url = fallback;
 	}
 	manga.updateProgress(props.entry.id, next, url);
 	router.push({ name: 'reader', query: { url, siteId: src.siteId, mangaId: props.entry.id, chapter: next } });
