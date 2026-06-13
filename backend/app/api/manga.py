@@ -126,7 +126,7 @@ def remove_manga(manga_id: int):
 @jwt_required()
 def remove_source_entry(manga_id: int, site_id: int):
     user = _current_user()
-    UserManga.query.filter_by(user_id=user.id, manga_id=manga_id).first_or_404()
+    user_entry = UserManga.query.filter_by(user_id=user.id, manga_id=manga_id).first_or_404()
 
     other_watchers = UserManga.query.filter(
         UserManga.manga_id == manga_id,
@@ -149,7 +149,10 @@ def remove_source_entry(manga_id: int, site_id: int):
         if remaining else None
     )
     db.session.commit()
-    return jsonify(manga.to_dict())
+    # Return the user-scoped entry (not manga.to_dict) so the response still
+    # carries currentChapter/currentChapterUrl — otherwise the frontend replaces
+    # the entry with a dict missing those fields and chapter maths yields NaN.
+    return jsonify(user_entry.to_dict())
 
 
 # ── Update current chapter (called when user clicks a chapter link) ────────────

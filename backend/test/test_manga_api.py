@@ -12,6 +12,7 @@ import pytest
 
 from app.extensions import db as _db
 from app.models.manga import Manga
+from app.models.manga_source_entry import MangaSourceEntry
 from app.models.scraper_site import ScraperSite
 from app.models.user_manga import UserManga
 
@@ -199,6 +200,100 @@ class TestRemoveManga:
 
         resp = client.delete(f"/api/manga/{manga_id}", headers=auth_headers)
         assert resp.status_code == 404
+
+
+# ── DELETE /api/manga/<id>/sources/<site_id> ──────────────────────────────────
+
+def _create_site(db, name: str, url: str) -> ScraperSite:
+    site = ScraperSite(
+        name=name,
+        latest_releases_url=url,
+        title_selector="h3",
+        chapter_link_selector="a",
+    )
+    db.session.add(site)
+    db.session.commit()
+    db.session.refresh(site)
+    return site
+
+
+def _add_source(db, manga, site, latest_chapter=10.0, cover_url=None) -> MangaSourceEntry:
+    entry = MangaSourceEntry(
+        manga_id=manga.id,
+        site_id=site.id,
+        latest_chapter=latest_chapter,
+        latest_chapter_url=f"{site.latest_releases_url}chapter/{int(latest_chapter)}",
+        cover_url=cover_url,
+    )
+    db.session.add(entry)
+    db.session.commit()
+    db.session.refresh(entry)
+    return entry
+
+
+class TestRemoveSourceEntry:
+    def test_returns_401_without_token(self, client):
+        resp = client.delete("/api/manga/1/sources/1")
+        assert resp.status_code == 401
+
+    def test_response_preserves_current_chapter(self, client, db, test_user, auth_headers, app):
+        """Regression: removing a source must not drop currentChapter/currentChapterUrl.
+
+        The endpoint used to return manga.to_dict(), which omits the user-scoped
+        progress fields — the frontend then overwrote the entry with NaN-inducing
+        undefineds. It must return the UserManga dict instead.
+        """
+        with app.app_context():
+            manga = _create_manga(db, "Solo Leveling", "solo-leveling")
+            entry = _link_manga(db, test_user, manga)
+            entry.current_chapter = 7.0
+            entry.current_chapter_url = "https://example.com/solo-leveling/chapter/7"
+            db.session.commit()
+            site_a = _create_site(db, "AsuraScans", "https://asura.example/")
+            site_b = _create_site(db, "VortexScans", "https://vortex.example/")
+            _add_source(db, manga, site_a, latest_chapter=12.0, cover_url="https://a/c.jpg")
+            _add_source(db, manga, site_b, latest_chapter=11.0, cover_url="https://b/c.jpg")
+            manga_id = manga.id
+            site_a_id = site_a.id
+
+        resp = client.delete(
+            f"/api/manga/{manga_id}/sources/{site_a_id}", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["currentChapter"] == 7.0
+        assert data["currentChapterUrl"] == "https://example.com/solo-leveling/chapter/7"
+        # the removed source must be gone from the returned sources list
+        assert all(s["siteId"] != site_a_id for s in data["sources"])
+
+    def test_returns_409_when_another_user_tracks_it(
+        self, client, db, test_user, auth_headers, app
+    ):
+        from app.models.user import User
+
+        with app.app_context():
+            other = User(
+                email="sharer@example.com",
+                display_name="Sharer",
+                oauth_provider="github",
+                oauth_sub="sharer-sub-001",
+            )
+            db.session.add(other)
+            db.session.commit()
+            db.session.refresh(other)
+
+            manga = _create_manga(db, "Omniscient Reader", "omniscient-reader")
+            _link_manga(db, test_user, manga)
+            _link_manga(db, other, manga)
+            site = _create_site(db, "AsuraScans", "https://asura2.example/")
+            _add_source(db, manga, site)
+            manga_id = manga.id
+            site_id = site.id
+
+        resp = client.delete(
+            f"/api/manga/{manga_id}/sources/{site_id}", headers=auth_headers
+        )
+        assert resp.status_code == 409
 
 
 # ── PATCH /api/manga/<id>/progress ───────────────────────────────────────────
